@@ -22,8 +22,8 @@ const INODE_TYPE_SYMBOLIC_LINK = "l"
 type INode struct {
 	UUID         uuid.UUID `json:uuid`
 	Type         string    `json:type`
+	Hash         string    `json:hash` // If it is a link, this will be null
 	OriginalPath string    `json:original_path`
-	Hash         string    `json:hash`        // If it is a link, this will be null
 	TargetPath   string    `json:target_path` // Used only for links
 	Size         int64     `json:size`        // In bytes
 	User         string    `json:user`
@@ -67,6 +67,9 @@ func (node *INode) FromFile(path string) error {
 	node.Mode = info.Mode().String()
 	if info.Mode().IsDir() {
 		node.Type = INODE_TYPE_DIRECTORY
+		// Directories have no hash
+		node.Hash = ""
+		return nil
 	} else if info.Mode().IsRegular() {
 		node.Type = INODE_TYPE_FILE
 	} else if info.Mode()&os.ModeSymlink != 0 {
