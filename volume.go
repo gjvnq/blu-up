@@ -43,7 +43,9 @@ var volAddCmd = &cobra.Command{
 			vol.Desc = args[2]
 		}
 		_, err := DB.Exec("INSERT INTO `volumes` (`uuid`, `name`, `desc`) VALUES (?, ?, ?);", vol.UUID, vol.Name, vol.Desc)
-		CheckEnd(err)
+		if err != nil {
+			Log.Fatal(err)
+		}
 	},
 }
 
@@ -57,7 +59,9 @@ var volRmCmd = &cobra.Command{
 		defer DB.Close()
 		// Query
 		_, err := DB.Exec("DELETE FROM `volumes` WHERE `uuid` = ?", args[1])
-		CheckEnd(err)
+		if err != nil {
+			Log.Fatal(err)
+		}
 	},
 }
 
@@ -73,7 +77,9 @@ var volLsCmd = &cobra.Command{
 		defer DB.Close()
 		// Query
 		rows, err := DB.Query("SELECT `uuid`, `name`, `desc` FROM `volumes`;")
-		CheckEnd(err)
+		if err != nil {
+			Log.Fatal(err)
+		}
 		defer rows.Close()
 		for rows.Next() {
 			flag_empty = false
@@ -81,7 +87,9 @@ var volLsCmd = &cobra.Command{
 			var name string
 			var desc string
 			err := rows.Scan(&uuid, &name, &desc)
-			CheckEnd(err)
+			if err != nil {
+				Log.Fatal(err)
+			}
 			fmt.Println(uuid, aurora.Bold(name), desc)
 		}
 		if flag_empty {

@@ -16,10 +16,12 @@ CREATE TABLE IF NOT EXISTS `inodes` (
 	`group`	TEXT NOT NULL,
 	`mode`	TEXT NOT NULL,
 	`mod_time`	INTEGER NOT NULL,
+	`scan_time`	INTEGER NOT NULL,
 	PRIMARY KEY(`uuid`)
 );
 CREATE TABLE IF NOT EXISTS `blobs` (
 	`hash`	TEXT NOT NULL,
+	`size`	INTEGER NOT NULL,
 	`volume_uuid`	TEXT NOT NULL,
 	PRIMARY KEY(`hash`)
 );
@@ -38,8 +40,8 @@ CREATE INDEX IF NOT EXISTS `idx_inodes_size` ON `inodes` (
 CREATE INDEX IF NOT EXISTS `idx_inodes_original_path` ON `inodes` (
 	`original_path`	ASC
 );
-CREATE INDEX IF NOT EXISTS `idx_inodes_mod_time` ON `inodes` (
-	`mod_time`	ASC
+CREATE INDEX IF NOT EXISTS `idx_inodes_scan_time` ON `inodes` (
+	`scan_time`	ASC
 );
 CREATE INDEX IF NOT EXISTS `idx_inodes_hash` ON `inodes` (
 	`hash`	ASC

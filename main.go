@@ -7,11 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/logrusorgru/aurora"
+	"github.com/gjvnq/go-logger"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/spf13/cobra"
 )
 
+var Log *logger.Logger
 var FlagUUID string
 var DBPath string
 var DB *sql.DB
@@ -33,11 +34,28 @@ var versionCmd = &cobra.Command{
 }
 
 var runCmd = &cobra.Command{
-	Use:   "run [db path] [folder to backup] [volume name] [volume path]",
+	Use:   "run [db path] [folder to backup] [volume uuid] [volume path]",
 	Short: "Backups a folder",
-	Args:  cobra.ExactArgs(3),
+	Args:  cobra.ExactArgs(4),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("v0.0.1")
+		// Load DB
+		LoadDB(args)
+		defer DB.Close()
+		// Set up channels
+		PathsToScanCh = make(chan string, 128)
+		INodesToSaveCh = make(chan INode, 2048)
+		FinishedSavingCh = make(chan bool)
+
+		// Set a few variables
+		backup_path, _ := filepath.Abs(args[1])
+		// vol_uuid := args[2]
+		// target_path := args[3]
+		// fmt.Println(NewINodeFromFile(backup_path))
+		go scanner_producer(backup_path, true)
+		go scanner_consumer()
+		go saver_consumer()
+		Log.Info("waiting...")
+		<-FinishedSavingCh
 	},
 }
 
@@ -49,33 +67,36 @@ var initCmd = &cobra.Command{
 		// Load DB
 		LoadDB(args)
 		defer DB.Close()
-		// Run commands
-		_, err := DB.Exec(CREATE_DB_SQL)
-		CheckEnd(err)
 	},
 }
 
 func LoadDB(args []string) {
 	var err error
 	DBPath, err = filepath.Abs(args[0])
-	CheckEnd(err)
+	if err != nil {
+		Log.Fatal(err)
+	}
 	if !strings.HasSuffix(DBPath, ".sqlite") {
-		CheckEnd("db path must end with .sqlite")
+		Log.Fatal("db path must end with .sqlite")
 	}
 	DB, err = sql.Open("sqlite3", DBPath)
-	CheckEnd(err)
-	// fmt.Println("Opened", DBPath)
-}
-
-func CheckEnd(err interface{}) {
-	if err == nil {
-		return
+	DB.SetMaxOpenConns(1)
+	if err != nil {
+		Log.Fatal(err)
 	}
-	fmt.Println(aurora.Bold(aurora.Red(err)))
-	os.Exit(1)
+	_, err = DB.Exec(CREATE_DB_SQL)
+	if err != nil {
+		Log.Fatal(err)
+	}
 }
 
 func main() {
+	var err error
+	Log, err = logger.New("main", 1, os.Stdout)
+	if err != nil {
+		panic(err) // Check for error
+	}
+
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
 	volAddCmd.Flags().StringVarP(&FlagUUID, "uuid", "", "", "Force specific UUID for new volume instead of generating a new one")
