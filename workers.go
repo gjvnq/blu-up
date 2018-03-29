@@ -1,10 +1,23 @@
 package main
 
-import "io/ioutil"
+import (
+	"io/ioutil"
+)
 
 var INodesToSaveCh chan INode
 var PathsToScanCh chan string
 var FinishedSavingCh chan bool
+var IgnoreFolders []string = []string{".git", ".cvs", ".svn", ".cache"}
+var SpecialFoldersToPack []string = []string{".git", ".svn", ".hg"}
+
+func ContainsStr(haystack []string, needle string) bool {
+	for _, hay := range haystack {
+		if hay == needle {
+			return true
+		}
+	}
+	return false
+}
 
 func saver_consumer() {
 	for {
@@ -28,7 +41,9 @@ func scanner_producer(root string, is_root bool) {
 		full_path_child := root + "/" + child.Name()
 		PathsToScanCh <- full_path_child
 		if child.IsDir() {
-			scanner_producer(full_path_child, false)
+			if !ContainsStr(IgnoreFolders, child.Name()) && !ContainsStr(SpecialFoldersToPack, child.Name()) {
+				scanner_producer(full_path_child, false)
+			}
 		}
 	}
 
@@ -50,6 +65,5 @@ func scanner_consumer() {
 		if err != nil {
 			Log.Warning(node, err)
 		}
-		Log.Debug(node.Hash)
 	}
 }

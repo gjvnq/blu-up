@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `inodes` (
 	`uuid`	TEXT NOT NULL,
 	`type`	TEXT NOT NULL,
 	`hash`	TEXT NOT NULL,
+	`compression`	TEXT NOT NULL,
 	`original_path`	TEXT NOT NULL,
 	`target_path`	TEXT NOT NULL,
 	`size`	INTEGER NOT NULL,

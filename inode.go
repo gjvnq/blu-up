@@ -23,6 +23,7 @@ type INode struct {
 	UUID         string    `json:uuid`
 	Type         string    `json:type`
 	Hash         string    `json:hash` // If it is a link, this will be null
+	Compression  string    `json:compression`
 	OriginalPath string    `json:original_path`
 	TargetPath   string    `json:target_path` // Used only for links
 	Size         int64     `json:size`        // In bytes
@@ -36,11 +37,9 @@ type INode struct {
 const ERR_INVALID_INODE_TYPE = "invalid inode type (ex: sockets)"
 
 func SaveInode(inode INode) {
-	_, err := DB.Exec("INSERT INTO `inodes` (`uuid`, `type`, `hash`, `original_path`, `target_path`, `size`, `user`, `group`, `mode`, `mod_time`, `scan_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", inode.UUID, inode.Type, inode.Hash, inode.OriginalPath, inode.TargetPath, inode.Size, inode.User, inode.Group, inode.Mode, inode.ModTime.Unix(), inode.ScanTime.Unix())
+	_, err := DB.Exec("INSERT INTO `inodes` (`uuid`, `type`, `hash`, `compression`, `original_path`, `target_path`, `size`, `user`, `group`, `mode`, `mod_time`, `scan_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", inode.UUID, inode.Type, inode.Hash, inode.Compression, inode.OriginalPath, inode.TargetPath, inode.Size, inode.User, inode.Group, inode.Mode, inode.ModTime.Unix(), inode.ScanTime.Unix())
 	if err != nil {
 		Log.Warning(err)
-	} else {
-		Log.Debug("Saved " + inode.UUID + " on " + inode.OriginalPath + " to the database")
 	}
 }
 
@@ -87,8 +86,11 @@ func (node *INode) FromFile(path string) error {
 	node.Mode = info.Mode().String()
 	if info.Mode().IsDir() {
 		node.Type = INODE_TYPE_DIRECTORY
-		// Directories have no hash
+		// Directories have no hash (usually)
 		node.Hash = ""
+		if ContainsStr(SpecialFoldersToPack, info.Name()) {
+			Log.Warning("TODO: implement folder packing. Path: " + path)
+		}
 		return nil
 	} else if info.Mode().IsRegular() {
 		node.Type = INODE_TYPE_FILE
@@ -124,6 +126,7 @@ func (node *INode) FromFile(path string) error {
 
 	// Store the hash
 	node.Hash = "SHA3-512:" + hex.EncodeToString(hasher.Sum(nil))
+	Log.Debug("Hashed " + node.OriginalPath)
 
 	return nil
 }
