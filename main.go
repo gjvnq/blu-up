@@ -45,17 +45,20 @@ var runCmd = &cobra.Command{
 		PathsToScanCh = make(chan string, 128)
 		INodesToSaveCh = make(chan INode, 2048)
 		FinishedSavingCh = make(chan bool)
+		MarkedForDeletion = make([]string, 0)
 
 		// Set a few variables
 		backup_path, _ := filepath.Abs(args[1])
-		// vol_uuid := args[2]
-		// target_path := args[3]
-		// fmt.Println(NewINodeFromFile(backup_path))
+		vol_uuid := args[2]
+		target_path := args[3]
+		// Start workers
 		go scanner_producer(backup_path, true)
 		go scanner_consumer()
 		go saver_consumer()
 		Log.Info("waiting...")
 		<-FinishedSavingCh
+		delete_marked()
+		Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)\n", backup_path, target_path, vol_uuid)
 	},
 }
 

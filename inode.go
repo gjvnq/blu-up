@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/user"
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/mholt/archiver"
 
 	"github.com/gjvnq/go.uuid"
 	"golang.org/x/crypto/sha3"
@@ -60,14 +63,14 @@ func (node *INode) FromFile(path string) error {
 	// Get absolute path
 	node.OriginalPath, err = filepath.Abs(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FromFile(path = '%s') (filepath.Abs): %s ", path, err)
+		Log.WarningF("FromFile(path = '%s') (filepath.Abs): %s ", path, err)
 		return err
 	}
 
 	// Get file info
 	info, err := os.Lstat(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FromFile(path = '%s') (os.Lstat): %s ", path, err)
+		Log.WarningF("FromFile(path = '%s') (os.Lstat): %s ", path, err)
 		return err
 	}
 	node.ModTime = info.ModTime()
@@ -89,9 +92,23 @@ func (node *INode) FromFile(path string) error {
 		// Directories have no hash (usually)
 		node.Hash = ""
 		if ContainsStr(SpecialFoldersToPack, info.Name()) {
-			Log.Warning("TODO: implement folder packing. Path: " + path)
+			// Get a temporary file
+			fptr, err := ioutil.TempFile(filepath.Dir(node.OriginalPath), "tmp_tar_gz_")
+			path = fptr.Name()
+			fptr.Close()
+			// Specify compression method
+			node.Compression = "tar+gzip"
+			// Actually compress file
+			err = archiver.TarGz.Make(path, []string{node.OriginalPath})
+			if err != nil {
+				Log.WarningF("FromFile(path = '%s') (archiver.TarGz.Make): %s \n", path, err)
+				return err
+			}
+			// Remember to delete the file later
+			MarkedForDeletion = append(MarkedForDeletion, path)
+		} else {
+			return nil
 		}
-		return nil
 	} else if info.Mode().IsRegular() {
 		node.Type = INODE_TYPE_FILE
 	} else if info.Mode()&os.ModeSymlink != 0 {
@@ -100,12 +117,12 @@ func (node *INode) FromFile(path string) error {
 		node.Hash = ""
 		node.TargetPath, err = os.Readlink(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "FromFile(path = '%s') (os.Readlink): %s \n", path, err)
+			Log.WarningF("FromFile(path = '%s') (os.Readlink): %s \n", path, err)
 			return err
 		}
 		return nil
 	} else {
-		fmt.Fprintf(os.Stderr, "FromFile(path = '%s') (invalid inode type, ex: sockets): %s \n", path, node.Mode)
+		Log.WarningF("FromFile(path = '%s') (invalid inode type, ex: sockets): %s \n", path, node.Mode)
 		return errors.New(ERR_INVALID_INODE_TYPE)
 	}
 
@@ -113,20 +130,20 @@ func (node *INode) FromFile(path string) error {
 	fptr, err := os.Open(path)
 	defer fptr.Close()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FromFile(path = '%s') (opening file): %s \n", path, err)
+		Log.WarningF("FromFile(path = '%s') (opening file): %s \n", path, err)
 		return err
 	}
 
 	// Hash the file
 	hasher := sha3.New512()
 	if node.Size, err = io.Copy(hasher, fptr); err != nil {
-		fmt.Fprintf(os.Stderr, "FromFile(path = '%s') (hashing file): %s \n", path, err)
+		Log.WarningF("FromFile(path = '%s') (hashing file): %s \n", path, err)
 		return err
 	}
 
 	// Store the hash
 	node.Hash = "SHA3-512:" + hex.EncodeToString(hasher.Sum(nil))
-	Log.Debug("Hashed " + node.OriginalPath)
+	Log.Debug("Hashed '" + node.OriginalPath + "' = " + node.Hash)
 
 	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"io/ioutil"
+	"os"
 )
 
 var INodesToSaveCh chan INode
@@ -9,6 +10,7 @@ var PathsToScanCh chan string
 var FinishedSavingCh chan bool
 var IgnoreFolders []string = []string{".git", ".cvs", ".svn", ".cache"}
 var SpecialFoldersToPack []string = []string{".git", ".svn", ".hg"}
+var MarkedForDeletion []string
 
 func ContainsStr(haystack []string, needle string) bool {
 	for _, hay := range haystack {
@@ -64,6 +66,20 @@ func scanner_consumer() {
 		node, err := NewINodeFromFile(path)
 		if err != nil {
 			Log.Warning(node, err)
+		}
+	}
+}
+
+func delete_marked() {
+	var err error
+
+	Log.Info("Deleting temporary files created during backup")
+	for _, path := range MarkedForDeletion {
+		err = os.Remove(path)
+		if err != nil {
+			Log.Warning("Failed to delete '" + path + "': " + err.Error())
+		} else {
+			Log.Info("Deleted " + path)
 		}
 	}
 }
