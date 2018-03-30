@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gjvnq/go-logger"
 	_ "github.com/mattn/go-sqlite3"
@@ -42,23 +43,29 @@ var runCmd = &cobra.Command{
 		LoadDB(args)
 		defer DB.Close()
 		// Set up channels
+		CopierCh = make(chan CopyOrder, 64)
 		PathsToScanCh = make(chan string, 128)
 		INodesToSaveCh = make(chan INode, 2048)
 		FinishedSavingCh = make(chan bool)
+		CopierDoneCh = make(chan bool)
 		MarkedForDeletion = make([]string, 0)
+		MarkedForDeletionLock = &sync.Mutex{}
 
 		// Set a few variables
-		backup_path, _ := filepath.Abs(args[1])
-		vol_uuid := args[2]
-		target_path := args[3]
+		BackupFromFolder, _ = filepath.Abs(args[1])
+		BackupVolUUID = args[2]
+		BackupToFolder = args[3]
 		// Start workers
-		go scanner_producer(backup_path, true)
+		go scanner_producer(BackupFromFolder, true)
 		go scanner_consumer()
 		go saver_consumer()
-		Log.Info("waiting...")
+		go copier_consumer()
 		<-FinishedSavingCh
+		Log.Info("Finished saving inodes to db.")
+		<-CopierDoneCh
+		Log.InfoF("Finished copying blobs to '%s'", BackupToFolder)
 		delete_marked()
-		Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)\n", backup_path, target_path, vol_uuid)
+		Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)", BackupFromFolder, BackupToFolder, BackupVolUUID)
 	},
 }
 

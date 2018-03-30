@@ -3,6 +3,7 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"sync"
 )
 
 var INodesToSaveCh chan INode
@@ -11,6 +12,7 @@ var FinishedSavingCh chan bool
 var IgnoreFolders []string = []string{".git", ".cvs", ".svn", ".cache"}
 var SpecialFoldersToPack []string = []string{".git", ".svn", ".hg"}
 var MarkedForDeletion []string
+var MarkedForDeletionLock *sync.Mutex
 
 func ContainsStr(haystack []string, needle string) bool {
 	for _, hay := range haystack {
@@ -26,10 +28,37 @@ func saver_consumer() {
 		inode, more := <-INodesToSaveCh
 		if !more {
 			Log.Info("Finished saving INodes to database")
+			close(CopierCh)
 			FinishedSavingCh <- true
 			return
 		}
-		SaveInode(inode)
+		err := inode.Save()
+		if err != nil {
+			Log.Warning(err)
+			continue
+		}
+		// Check for blob
+		if inode.Hash == "" {
+			continue
+		}
+		blob, err := LoadBlob(inode.Hash)
+		if err != nil {
+			Log.Warning(err)
+		}
+		if blob.Hash != "" {
+			Log.DebugF("Found blob for '%s' on volume %s", inode.OriginalPath, blob.VolUUID)
+		} else {
+			blob.Hash = inode.Hash
+			blob.Size = inode.Size
+			blob.VolUUID = BackupVolUUID
+			Log.DebugF("Blob for '%s' has not been copied yet", inode.HackPath)
+			err = blob.Save()
+			if err != nil {
+				Log.Warning(err)
+				continue
+			}
+			AddToCopier(inode.HackPath, inode.Hash, blob.Size)
+		}
 	}
 }
 
@@ -65,7 +94,7 @@ func scanner_consumer() {
 		}
 		node, err := NewINodeFromFile(path)
 		if err != nil {
-			Log.Warning(node, err)
+			Log.Warning(node.OriginalPath, err)
 		}
 	}
 }
@@ -82,4 +111,5 @@ func delete_marked() {
 			Log.Info("Deleted " + path)
 		}
 	}
+	Log.Info("Deleted all temporary files created during backup")
 }

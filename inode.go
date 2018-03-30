@@ -28,6 +28,7 @@ type INode struct {
 	Hash         string    `json:hash` // If it is a link, this will be null
 	Compression  string    `json:compression`
 	OriginalPath string    `json:original_path`
+	HackPath     string    `json:-`
 	TargetPath   string    `json:target_path` // Used only for links
 	Size         int64     `json:size`        // In bytes
 	User         string    `json:user`
@@ -39,18 +40,19 @@ type INode struct {
 
 const ERR_INVALID_INODE_TYPE = "invalid inode type (ex: sockets)"
 
-func SaveInode(inode INode) {
-	_, err := DB.Exec("INSERT INTO `inodes` (`uuid`, `type`, `hash`, `compression`, `original_path`, `target_path`, `size`, `user`, `group`, `mode`, `mod_time`, `scan_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", inode.UUID, inode.Type, inode.Hash, inode.Compression, inode.OriginalPath, inode.TargetPath, inode.Size, inode.User, inode.Group, inode.Mode, inode.ModTime.Unix(), inode.ScanTime.Unix())
-	if err != nil {
-		Log.Warning(err)
-	}
-}
-
 func NewINodeFromFile(path string) (*INode, error) {
 	node := &INode{}
 	err := node.FromFile(path)
 	INodesToSaveCh <- *node
 	return node, err
+}
+
+func (inode INode) Save() error {
+	_, err := DB.Exec("INSERT INTO `inodes` (`uuid`, `type`, `hash`, `compression`, `original_path`, `target_path`, `size`, `user`, `group`, `mode`, `mod_time`, `scan_time`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", inode.UUID, inode.Type, inode.Hash, inode.Compression, inode.OriginalPath, inode.TargetPath, inode.Size, inode.User, inode.Group, inode.Mode, inode.ModTime.Unix(), inode.ScanTime.Unix())
+	if err != nil {
+		Log.Warning(err)
+	}
+	return err
 }
 
 func (node *INode) FromFile(path string) error {
@@ -74,6 +76,7 @@ func (node *INode) FromFile(path string) error {
 		return err
 	}
 	node.ModTime = info.ModTime()
+	node.Size = info.Size()
 
 	// Get user and group
 	if info.Sys() != nil {
@@ -101,11 +104,20 @@ func (node *INode) FromFile(path string) error {
 			// Actually compress file
 			err = archiver.TarGz.Make(path, []string{node.OriginalPath})
 			if err != nil {
-				Log.WarningF("FromFile(path = '%s') (archiver.TarGz.Make): %s \n", path, err)
+				Log.WarningF("FromFile(path = '%s') (archiver.TarGz.Make): %s ", path, err)
 				return err
 			}
 			// Remember to delete the file later
+			MarkedForDeletionLock.Lock()
 			MarkedForDeletion = append(MarkedForDeletion, path)
+			MarkedForDeletionLock.Unlock()
+			// Adjust file size
+			info, err := os.Lstat(path)
+			if err != nil {
+				Log.WarningF("FromFile(path = '%s') (os.Lstat): %s ", path, err)
+				return err
+			}
+			node.Size = info.Size()
 		} else {
 			return nil
 		}
@@ -117,28 +129,34 @@ func (node *INode) FromFile(path string) error {
 		node.Hash = ""
 		node.TargetPath, err = os.Readlink(path)
 		if err != nil {
-			Log.WarningF("FromFile(path = '%s') (os.Readlink): %s \n", path, err)
+			Log.WarningF("FromFile(path = '%s') (os.Readlink): %s ", path, err)
 			return err
 		}
 		return nil
 	} else {
-		Log.WarningF("FromFile(path = '%s') (invalid inode type, ex: sockets): %s \n", path, node.Mode)
+		Log.WarningF("FromFile(path = '%s') (invalid inode type, ex: sockets): %s ", path, node.Mode)
 		return errors.New(ERR_INVALID_INODE_TYPE)
 	}
 
 	// Open file
+	node.HackPath = path
 	fptr, err := os.Open(path)
 	defer fptr.Close()
 	if err != nil {
-		Log.WarningF("FromFile(path = '%s') (opening file): %s \n", path, err)
+		Log.WarningF("FromFile(path = '%s') (opening file): %s ", path, err)
 		return err
 	}
 
 	// Hash the file
 	hasher := sha3.New512()
-	if node.Size, err = io.Copy(hasher, fptr); err != nil {
-		Log.WarningF("FromFile(path = '%s') (hashing file): %s \n", path, err)
+	size_hashed := int64(0)
+	if size_hashed, err = io.Copy(hasher, fptr); err != nil {
+		Log.WarningF("FromFile(path = '%s') (hashing file): %s ", path, err)
 		return err
+	}
+	if node.Size != size_hashed {
+		Log.WarningF("File size reported by os.Lstat (%d bytes) is different from the size hashed (%d bytes)", node.Size, size_hashed)
+		return errors.New("file size does not match number of hashed bytes")
 	}
 
 	// Store the hash

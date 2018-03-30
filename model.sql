@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS `blobs` (
 	`hash`	TEXT NOT NULL,
 	`size`	INTEGER NOT NULL,
 	`volume_uuid`	TEXT NOT NULL,
+	`first_added`	INTEGER NOT NULL,
 	PRIMARY KEY(`hash`)
 );
 CREATE INDEX IF NOT EXISTS `idx_inodes_user` ON `inodes` (
