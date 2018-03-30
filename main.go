@@ -17,6 +17,7 @@ var Log *logger.Logger
 var FlagUUID string
 var DBPath string
 var DB *sql.DB
+var FlagDebug bool
 
 const VERSION = "v0.0.1"
 
@@ -24,6 +25,9 @@ var rootCmd = &cobra.Command{
 	Use:   "blu-up [command]",
 	Short: "blu-up a simple backup tool",
 	Long:  "A hash based backup tool capable of multiple volumes, links and deduplication. https://github.com/gjvnq/blu-up",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		Log.Worker.DisabledLevels["DEBUG"] = !FlagDebug
+	},
 }
 
 var versionCmd = &cobra.Command{
@@ -107,6 +111,7 @@ func main() {
 		panic(err) // Check for error
 	}
 
+	rootCmd.PersistentFlags().BoolVarP(&FlagDebug, "debug", "", false, "show debug info")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
 	volAddCmd.Flags().StringVarP(&FlagUUID, "uuid", "", "", "Force specific UUID for new volume instead of generating a new one")
@@ -115,6 +120,7 @@ func main() {
 	volCmd.AddCommand(volLsCmd)
 	rootCmd.AddCommand(volCmd)
 	rootCmd.AddCommand(runCmd)
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
