@@ -60,12 +60,20 @@ var backupCmd = &cobra.Command{
 
 		// Set a few variables
 		BackupFromFolder, _ = filepath.Abs(BackupFromFolder)
-		// BackupVolUUID = args[2] // Needs to get volume uuid from name
 		BackupToFolder, _ = filepath.Abs(BackupToFolder)
 		if BackupToFolder == BackupFromFolder {
 			Log.FatalF("Backup origin ('%s') and destination ('%s') cannot be equal", BackupFromFolder, BackupToFolder)
 			return
 		}
+		vol, err := LoadVol(BackupVolUUID)
+		if err != nil {
+			Log.FatalF("Failed to load volume %s", BackupVolUUID)
+		}
+		if vol.UUID == "" {
+			Log.FatalF("Volume not found %s", BackupVolUUID)
+		}
+		BackupVolUUID = vol.UUID
+		BackupVolName = vol.Name
 		// Start workers
 		go scanner_producer(BackupFromFolder, true)
 		go scanner_consumer()
@@ -115,9 +123,13 @@ func LoadDB(args []string) {
 func cleanup() {
 	for {
 		<-SigCh
-		delete_marked()
+		BeforeFatal()
 		os.Exit(1)
 	}
+}
+
+func BeforeFatal() {
+	delete_marked()
 }
 
 func main() {

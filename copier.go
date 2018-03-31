@@ -18,6 +18,7 @@ var CopierDoneCh chan bool
 var BackupToFolder string
 var BackupFromFolder string
 var BackupVolUUID string
+var BackupVolName string
 
 func AddToCopier(origin, hash string, size int64) {
 	order := CopyOrder{}
