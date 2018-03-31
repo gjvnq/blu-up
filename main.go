@@ -38,10 +38,10 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-var runCmd = &cobra.Command{
-	Use:   "run [db path] [folder to backup] [volume uuid] [volume path]",
+var backupCmd = &cobra.Command{
+	Use:   "backup",
 	Short: "Backups a folder",
-	Args:  cobra.ExactArgs(4),
+	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Load DB
 		LoadDB(args)
@@ -56,9 +56,13 @@ var runCmd = &cobra.Command{
 		MarkedForDeletionLock = &sync.Mutex{}
 
 		// Set a few variables
-		BackupFromFolder, _ = filepath.Abs(args[1])
-		BackupVolUUID = args[2]
-		BackupToFolder = args[3]
+		BackupFromFolder, _ = filepath.Abs(BackupFromFolder)
+		// BackupVolUUID = args[2] // Needs to get volume uuid from name
+		BackupToFolder, _ = filepath.Abs(BackupToFolder)
+		if BackupToFolder == BackupFromFolder {
+			Log.FatalF("Backup origin ('%s') and destination ('%s') cannot be equal", BackupFromFolder, BackupToFolder)
+			return
+		}
 		// Start workers
 		go scanner_producer(BackupFromFolder, true)
 		go scanner_consumer()
@@ -84,7 +88,10 @@ var initCmd = &cobra.Command{
 
 func LoadDB(args []string) {
 	var err error
-	DBPath, err = filepath.Abs(args[0])
+	if DBPath == "" {
+		DBPath = args[0]
+	}
+	DBPath, err = filepath.Abs(DBPath)
 	if err != nil {
 		Log.Fatal(err)
 	}
@@ -110,6 +117,7 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().BoolVarP(&FlagDebug, "debug", "", false, "show debug info")
+	rootCmd.PersistentFlags().StringVarP(&DBPath, "db", "", "", "set the database path")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
 	volAddCmd.Flags().StringVarP(&FlagUUID, "uuid", "", "", "Force specific UUID for new volume instead of generating a new one")
@@ -117,7 +125,14 @@ func main() {
 	volCmd.AddCommand(volRmCmd)
 	volCmd.AddCommand(volLsCmd)
 	rootCmd.AddCommand(volCmd)
-	rootCmd.AddCommand(runCmd)
+	backupCmd.Flags().StringVarP(&BackupFromFolder, "from", "f", "", "path to folder to backup")
+	backupCmd.Flags().StringVarP(&BackupToFolder, "to", "t", "", "path to folder to save blobs")
+	backupCmd.Flags().StringVarP(&BackupVolUUID, "vol", "v", "", "volume uuid or name")
+	backupCmd.MarkFlagRequired("db")
+	backupCmd.MarkFlagRequired("from")
+	backupCmd.MarkFlagRequired("to")
+	backupCmd.MarkFlagRequired("vol")
+	rootCmd.AddCommand(backupCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

@@ -64,6 +64,9 @@ func saver_consumer() {
 
 // Recursivelly lists the filesystem in order to list what inodes will be scanned. DO NOT run more than one goroutine for this
 func scanner_producer(root string, is_root bool) {
+	if is_root {
+		Log.NoticeF("Started looking for files to backup on '%s'", root)
+	}
 	children, err := ioutil.ReadDir(root)
 	if err != nil {
 		Log.Warning(err)
