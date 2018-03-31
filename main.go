@@ -86,6 +86,47 @@ var backupCmd = &cobra.Command{
 	},
 }
 
+var verifyCmd = &cobra.Command{
+	Use:   "verify [uuid] [folder]",
+	Short: "Backups a folder",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		// Load DB
+		LoadDB(args)
+		defer DB.Close()
+		// Set up channels
+		// CopierCh = make(chan CopyOrder, 64)
+		// PathsToScanCh = make(chan string, 128)
+		// INodesToSaveCh = make(chan INode, 2048)
+		// FinishedSavingCh = make(chan bool)
+		// CopierDoneCh = make(chan bool)
+		// MarkedForDeletion = make([]string, 0)
+		// MarkedForDeletionLock = &sync.Mutex{}
+
+		// Set a few variables
+		BackupToFolder, _ = filepath.Abs(BackupToFolder)
+		vol, err := LoadVol(BackupVolUUID)
+		if err != nil {
+			Log.FatalF("Failed to load volume %s", BackupVolUUID)
+		}
+		if vol.UUID == "" {
+			Log.FatalF("Volume not found %s", BackupVolUUID)
+		}
+		BackupVolUUID = vol.UUID
+		BackupVolName = vol.Name
+		// Start workers
+		// go scanner_producer(BackupFromFolder, true)
+		// go scanner_consumer()
+		// go saver_consumer()
+		// go copier_consumer()
+		// <-FinishedSavingCh
+		// <-CopierDoneCh
+		// delete_marked()
+		// Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)", BackupFromFolder, BackupToFolder, BackupVolUUID)
+		Log.Warning("verification not implemented")
+	},
+}
+
 var initCmd = &cobra.Command{
 	Use:   "init [db path]",
 	Short: "Starts an empty backup database",
@@ -161,6 +202,12 @@ func main() {
 	backupCmd.MarkFlagRequired("to")
 	backupCmd.MarkFlagRequired("vol")
 	rootCmd.AddCommand(backupCmd)
+	verifyCmd.Flags().StringVarP(&BackupToFolder, "to", "t", "", "path to folder to save blobs")
+	verifyCmd.Flags().StringVarP(&BackupVolUUID, "vol", "v", "", "volume uuid or name")
+	verifyCmd.MarkFlagRequired("db")
+	verifyCmd.MarkFlagRequired("to")
+	verifyCmd.MarkFlagRequired("vol")
+	rootCmd.AddCommand(verifyCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

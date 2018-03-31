@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/hex"
+	"io"
 	"io/ioutil"
 	"os"
 	"sync"
+
+	"golang.org/x/crypto/sha3"
 )
 
 var INodesToSaveCh chan INode
@@ -117,4 +121,22 @@ func delete_marked() {
 		}
 	}
 	Log.Notice("Deleted all temporary files created during backup")
+}
+
+func hash_file(path string) (string, int64, error) {
+	fptr, err := os.Open(path)
+	defer fptr.Close()
+	if err != nil {
+		Log.WarningF("Failed to open file '%s' for reading: %s ", path, err)
+		return "", 0, err
+	}
+
+	hasher := sha3.New512()
+	size_hashed := int64(0)
+	if size_hashed, err = io.Copy(hasher, fptr); err != nil {
+		Log.WarningF("Failed to hash file '%s': %s ", path, err)
+		return "", 0, err
+	}
+	hash := "SHA3-512:" + hex.EncodeToString(hasher.Sum(nil))
+	return hash, size_hashed, nil
 }

@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -15,7 +13,6 @@ import (
 	"github.com/mholt/archiver"
 
 	"github.com/gjvnq/go.uuid"
-	"golang.org/x/crypto/sha3"
 )
 
 const INODE_TYPE_FILE = "f"
@@ -138,20 +135,11 @@ func (node *INode) FromFile(path string) error {
 		return errors.New(ERR_INVALID_INODE_TYPE)
 	}
 
-	// Open file
+	// Hash file
+	var size_hashed int64
 	node.HackPath = path
-	fptr, err := os.Open(path)
-	defer fptr.Close()
+	node.Hash, size_hashed, err = hash_file(node.HackPath)
 	if err != nil {
-		Log.WarningF("FromFile(path = '%s') (opening file): %s ", path, err)
-		return err
-	}
-
-	// Hash the file
-	hasher := sha3.New512()
-	size_hashed := int64(0)
-	if size_hashed, err = io.Copy(hasher, fptr); err != nil {
-		Log.WarningF("FromFile(path = '%s') (hashing file): %s ", path, err)
 		return err
 	}
 	if node.Size != size_hashed {
@@ -160,7 +148,6 @@ func (node *INode) FromFile(path string) error {
 	}
 
 	// Store the hash
-	node.Hash = "SHA3-512:" + hex.EncodeToString(hasher.Sum(nil))
 	Log.Debug("Hashed '" + node.OriginalPath + "' = " + node.Hash)
 
 	return nil
