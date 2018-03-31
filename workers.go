@@ -105,7 +105,9 @@ func scanner_consumer() {
 func delete_marked() {
 	var err error
 
+	MarkedForDeletionLock.Lock()
 	Log.Notice("Deleting temporary files created during backup")
+	defer MarkedForDeletionLock.Unlock()
 	for _, path := range MarkedForDeletion {
 		err = os.Remove(path)
 		if err != nil {

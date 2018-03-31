@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/gjvnq/go-logger"
 	_ "github.com/mattn/go-sqlite3"
@@ -18,6 +20,7 @@ var FlagUUID string
 var DBPath string
 var DB *sql.DB
 var FlagDebug bool
+var SigCh chan os.Signal
 
 const VERSION = "v0.0.1"
 
@@ -41,7 +44,7 @@ var versionCmd = &cobra.Command{
 var backupCmd = &cobra.Command{
 	Use:   "backup",
 	Short: "Backups a folder",
-	Args:  cobra.ExactArgs(0),
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Load DB
 		LoadDB(args)
@@ -109,12 +112,25 @@ func LoadDB(args []string) {
 	}
 }
 
+func cleanup() {
+	for {
+		<-SigCh
+		delete_marked()
+		os.Exit(1)
+	}
+}
+
 func main() {
 	var err error
 	Log, err = logger.New("main", 1, os.Stdout)
 	if err != nil {
 		panic(err) // Check for error
 	}
+
+	// Capture ctrl+c
+	SigCh = make(chan os.Signal, 10)
+	signal.Notify(SigCh, os.Interrupt, syscall.SIGTERM)
+	go cleanup()
 
 	rootCmd.PersistentFlags().BoolVarP(&FlagDebug, "debug", "", false, "show debug info")
 	rootCmd.PersistentFlags().StringVarP(&DBPath, "db", "", "", "set the database path")
