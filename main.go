@@ -65,9 +65,7 @@ var runCmd = &cobra.Command{
 		go saver_consumer()
 		go copier_consumer()
 		<-FinishedSavingCh
-		Log.Info("Finished saving inodes to db.")
 		<-CopierDoneCh
-		Log.InfoF("Finished copying blobs to '%s'", BackupToFolder)
 		delete_marked()
 		Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)", BackupFromFolder, BackupToFolder, BackupVolUUID)
 	},

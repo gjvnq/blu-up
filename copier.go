@@ -32,7 +32,7 @@ func copier_consumer() {
 	for {
 		order, more := <-CopierCh
 		if !more {
-			Log.Info("Finished copying inodes to " + BackupToFolder)
+			Log.Notice("Finished copying blobs to " + BackupToFolder)
 			CopierDoneCh <- true
 			return
 		}

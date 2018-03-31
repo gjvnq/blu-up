@@ -27,7 +27,7 @@ func saver_consumer() {
 	for {
 		inode, more := <-INodesToSaveCh
 		if !more {
-			Log.Info("Finished saving INodes to database")
+			Log.Notice("Finished saving inodes to database")
 			close(CopierCh)
 			FinishedSavingCh <- true
 			return
@@ -102,7 +102,7 @@ func scanner_consumer() {
 func delete_marked() {
 	var err error
 
-	Log.Info("Deleting temporary files created during backup")
+	Log.Notice("Deleting temporary files created during backup")
 	for _, path := range MarkedForDeletion {
 		err = os.Remove(path)
 		if err != nil {
@@ -111,5 +111,5 @@ func delete_marked() {
 			Log.Info("Deleted " + path)
 		}
 	}
-	Log.Info("Deleted all temporary files created during backup")
+	Log.Notice("Deleted all temporary files created during backup")
 }
