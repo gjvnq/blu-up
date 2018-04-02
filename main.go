@@ -83,6 +83,7 @@ func backup(cmd *cobra.Command, args []string) {
 	go inode_scanner_consumer()
 	go inode_saver_consumer()
 	go copier_consumer()
+	Log.Info("Started backup")
 	<-FinishedSavingCh
 	<-CopierDoneCh
 	delete_marked()
@@ -91,7 +92,7 @@ func backup(cmd *cobra.Command, args []string) {
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify [uuid] [folder]",
-	Short: "Backups a folder",
+	Short: "Verifies if the backup blobs are fine and repairs them (if requested)",
 	Args:  cobra.NoArgs,
 	Run:   verify,
 }
@@ -123,6 +124,11 @@ func verify(cmd *cobra.Command, args []string) {
 	if FlagFix {
 		VerifierWG.Add(1)
 		go verifier_fixer()
+	}
+	if FlagFix {
+		Log.Info("Started verification and repair")
+	} else {
+		Log.Info("Started verification")
 	}
 	VerifierWG.Wait()
 	Log.Notice("Verification complete")
