@@ -27,7 +27,7 @@ func ContainsStr(haystack []string, needle string) bool {
 	return false
 }
 
-func saver_consumer() {
+func inode_saver_consumer() {
 	for {
 		inode, more := <-INodesToSaveCh
 		if !more {
@@ -67,7 +67,7 @@ func saver_consumer() {
 }
 
 // Recursivelly lists the filesystem in order to list what inodes will be scanned. DO NOT run more than one goroutine for this
-func scanner_producer(root string, is_root bool) {
+func inode_scanner_producer(root string, is_root bool) {
 	if is_root {
 		Log.NoticeF("Started looking for files to backup on '%s'", root)
 	}
@@ -80,7 +80,7 @@ func scanner_producer(root string, is_root bool) {
 		PathsToScanCh <- full_path_child
 		if child.IsDir() {
 			if !ContainsStr(IgnoreFolders, child.Name()) && !ContainsStr(SpecialFoldersToPack, child.Name()) {
-				scanner_producer(full_path_child, false)
+				inode_scanner_producer(full_path_child, false)
 			}
 		}
 	}
@@ -91,7 +91,7 @@ func scanner_producer(root string, is_root bool) {
 	}
 }
 
-func scanner_consumer() {
+func inode_scanner_consumer() {
 	for {
 		path, more := <-PathsToScanCh
 		if !more {
@@ -108,6 +108,10 @@ func scanner_consumer() {
 
 func delete_marked() {
 	var err error
+
+	if MarkedForDeletionLock == nil {
+		MarkedForDeletionLock = &sync.Mutex{}
+	}
 
 	MarkedForDeletionLock.Lock()
 	Log.Notice("Deleting temporary files created during backup")

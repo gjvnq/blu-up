@@ -31,8 +31,8 @@ func AddToCopier(origin, hash string, size int64) {
 	CopierCh <- order
 }
 
-// Do NOT run more than one of this
 func copier_consumer() {
+	// Do NOT run more than one of this
 	for {
 		order, more := <-CopierCh
 		if !more {
@@ -52,7 +52,7 @@ func copier_consumer() {
 			continue
 		}
 		if info.Size() != order.Size {
-			Log.ErrorF("Criginal file size (%d bytes) is different from copied file size (%d bytes) for file %s", order.Size, info.Size(), order.Dest)
+			Log.ErrorF("Original file size (%d bytes) is different from copied file size (%d bytes) for file %s", order.Size, info.Size(), order.Dest)
 			continue
 		}
 		//  Double check everything
@@ -80,28 +80,32 @@ func copier_main(order CopyOrder) error {
 		Log.WarningF("Failed to create '%s' and parent folders: %s", dir, err.Error())
 		return err
 	}
+	return copy_file(order.Origin, order.Dest, order.Size)
+}
+
+func copy_file(from, to string, expected_size int64) error {
 	// Open source file for reading
-	fptr_in, err := os.Open(order.Origin)
+	fptr_in, err := os.Open(from)
 	defer fptr_in.Close()
 	if err != nil {
-		Log.WarningF("Failed to open '%s' for reading: %s", order.Origin, err.Error())
+		Log.WarningF("Failed to open '%s' for reading: %s", from, err.Error())
 		return err
 	}
 	// Open destination for writing
-	fptr_out, err := os.Create(order.Dest)
+	fptr_out, err := os.Create(to)
 	defer fptr_out.Close()
 	if err != nil {
-		Log.WarningF("Failed to open '%s' for writing: %s", order.Dest, err.Error())
+		Log.WarningF("Failed to open '%s' for writing: %s", to, err.Error())
 		return err
 	}
 	// Actually copy the file
 	size, err := io.Copy(fptr_out, fptr_in)
 	if err != nil {
-		Log.WarningF("Failed to copy '%s' to '%s': %s", order.Origin, order.Dest, err.Error())
+		Log.WarningF("Failed to copy '%s' to '%s': %s", from, to, err.Error())
 		return err
 	}
-	if size != order.Size {
-		Log.WarningF("File size reported by os.Lstat (%d bytes) is different from the size copied (%d bytes) for file %s", order.Size, size, order.Dest)
+	if size != expected_size && expected_size >= 0 {
+		Log.WarningF("File size reported by os.Lstat (%d bytes) is different from the size copied (%d bytes) for file %s", expected_size, size, to)
 		return errors.New("file size does not match number of hashed bytes")
 	}
 	return nil

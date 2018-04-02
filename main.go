@@ -20,6 +20,7 @@ var FlagUUID string
 var DBPath string
 var DB *sql.DB
 var FlagDebug bool
+var FlagFix bool
 var SigCh chan os.Signal
 
 const VERSION = "v0.0.1"
@@ -45,86 +46,86 @@ var backupCmd = &cobra.Command{
 	Use:   "backup",
 	Short: "Backups a folder",
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Load DB
-		LoadDB(args)
-		defer DB.Close()
-		// Set up channels
-		CopierCh = make(chan CopyOrder, 64)
-		PathsToScanCh = make(chan string, 128)
-		INodesToSaveCh = make(chan INode, 2048)
-		FinishedSavingCh = make(chan bool)
-		CopierDoneCh = make(chan bool)
-		MarkedForDeletion = make([]string, 0)
-		MarkedForDeletionLock = &sync.Mutex{}
+	Run:   backup,
+}
 
-		// Set a few variables
-		BackupFromFolder, _ = filepath.Abs(BackupFromFolder)
-		BackupToFolder, _ = filepath.Abs(BackupToFolder)
-		if BackupToFolder == BackupFromFolder {
-			Log.FatalF("Backup origin ('%s') and destination ('%s') cannot be equal", BackupFromFolder, BackupToFolder)
-			return
-		}
-		vol, err := LoadVol(BackupVolUUID)
-		if err != nil {
-			Log.FatalF("Failed to load volume %s", BackupVolUUID)
-		}
-		if vol.UUID == "" {
-			Log.FatalF("Volume not found %s", BackupVolUUID)
-		}
-		BackupVolUUID = vol.UUID
-		BackupVolName = vol.Name
-		// Start workers
-		go scanner_producer(BackupFromFolder, true)
-		go scanner_consumer()
-		go saver_consumer()
-		go copier_consumer()
-		<-FinishedSavingCh
-		<-CopierDoneCh
-		delete_marked()
-		Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)", BackupFromFolder, BackupToFolder, BackupVolUUID)
-	},
+func backup(cmd *cobra.Command, args []string) {
+	// Load DB
+	LoadDB(args)
+	defer DB.Close()
+	// Set up channels
+	CopierCh = make(chan CopyOrder, 64)
+	PathsToScanCh = make(chan string, 128)
+	INodesToSaveCh = make(chan INode, 2048)
+	FinishedSavingCh = make(chan bool)
+	CopierDoneCh = make(chan bool)
+	MarkedForDeletion = make([]string, 0)
+	MarkedForDeletionLock = &sync.Mutex{}
+
+	// Set a few variables
+	BackupFromFolder, _ = filepath.Abs(BackupFromFolder)
+	BackupToFolder, _ = filepath.Abs(BackupToFolder)
+	if BackupToFolder == BackupFromFolder {
+		Log.FatalF("Backup origin ('%s') and destination ('%s') cannot be equal", BackupFromFolder, BackupToFolder)
+		return
+	}
+	vol, err := LoadVol(BackupVolUUID)
+	if err != nil {
+		Log.FatalF("Failed to load volume %s", BackupVolUUID)
+	}
+	if vol.UUID == "" {
+		Log.FatalF("Volume not found %s", BackupVolUUID)
+	}
+	BackupVolUUID = vol.UUID
+	BackupVolName = vol.Name
+	// Start workers
+	go inode_scanner_producer(BackupFromFolder, true)
+	go inode_scanner_consumer()
+	go inode_saver_consumer()
+	go copier_consumer()
+	<-FinishedSavingCh
+	<-CopierDoneCh
+	delete_marked()
+	Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)", BackupFromFolder, BackupToFolder, BackupVolUUID)
 }
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify [uuid] [folder]",
 	Short: "Backups a folder",
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Load DB
-		LoadDB(args)
-		defer DB.Close()
-		// Set up channels
-		// CopierCh = make(chan CopyOrder, 64)
-		// PathsToScanCh = make(chan string, 128)
-		// INodesToSaveCh = make(chan INode, 2048)
-		// FinishedSavingCh = make(chan bool)
-		// CopierDoneCh = make(chan bool)
-		// MarkedForDeletion = make([]string, 0)
-		// MarkedForDeletionLock = &sync.Mutex{}
+	Run:   verify,
+}
 
-		// Set a few variables
-		BackupToFolder, _ = filepath.Abs(BackupToFolder)
-		vol, err := LoadVol(BackupVolUUID)
-		if err != nil {
-			Log.FatalF("Failed to load volume %s", BackupVolUUID)
-		}
-		if vol.UUID == "" {
-			Log.FatalF("Volume not found %s", BackupVolUUID)
-		}
-		BackupVolUUID = vol.UUID
-		BackupVolName = vol.Name
-		// Start workers
-		// go scanner_producer(BackupFromFolder, true)
-		// go scanner_consumer()
-		// go saver_consumer()
-		// go copier_consumer()
-		// <-FinishedSavingCh
-		// <-CopierDoneCh
-		// delete_marked()
-		// Log.NoticeF("Finished backup from '%s' to '%s' (volume UUID %s)", BackupFromFolder, BackupToFolder, BackupVolUUID)
-		Log.Warning("verification not implemented")
-	},
+func verify(cmd *cobra.Command, args []string) {
+	// Load DB
+	LoadDB(args)
+	defer DB.Close()
+	// Set up channels
+	BlobsToVerifyCh = make(chan VerifyOrder, 128)
+	BlobsToRepairCh = make(chan VerifyOrder, 128)
+	VerifierWG = &sync.WaitGroup{}
+
+	// Set a few variables
+	BackupToFolder, _ = filepath.Abs(BackupToFolder)
+	vol, err := LoadVol(BackupVolUUID)
+	if err != nil {
+		Log.FatalF("Failed to load volume %s", BackupVolUUID)
+	}
+	if vol.UUID == "" {
+		Log.FatalF("Volume not found %s", BackupVolUUID)
+	}
+	BackupVolUUID = vol.UUID
+	BackupVolName = vol.Name
+	// Start workers
+	VerifierWG.Add(2)
+	go verifier_producer()
+	go verifier_consumer(FlagFix)
+	if FlagFix {
+		VerifierWG.Add(1)
+		go verifier_fixer()
+	}
+	VerifierWG.Wait()
+	Log.Notice("Verification complete")
 }
 
 var initCmd = &cobra.Command{
@@ -151,7 +152,6 @@ func LoadDB(args []string) {
 		Log.Fatal("db path must end with .sqlite")
 	}
 	DB, err = sql.Open("sqlite3", DBPath)
-	DB.SetMaxOpenConns(1)
 	if err != nil {
 		Log.Fatal(err)
 	}
@@ -204,6 +204,7 @@ func main() {
 	rootCmd.AddCommand(backupCmd)
 	verifyCmd.Flags().StringVarP(&BackupToFolder, "to", "t", "", "path to folder to save blobs")
 	verifyCmd.Flags().StringVarP(&BackupVolUUID, "vol", "v", "", "volume uuid or name")
+	verifyCmd.Flags().BoolVarP(&FlagFix, "fix", "f", false, "attempt to fix wrong or missing blobs")
 	verifyCmd.MarkFlagRequired("db")
 	verifyCmd.MarkFlagRequired("to")
 	verifyCmd.MarkFlagRequired("vol")
